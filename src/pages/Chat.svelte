@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Send, Paperclip, Search, Phone, Video, MoreVertical, Smile } from 'lucide-svelte';
+  import { Send, Paperclip, Search, Phone, Video, MoreVertical, Smile, ArrowLeft, Menu } from 'lucide-svelte';
   import Layout from '../components/Layout.svelte';
   import { chatRooms, currentChatRoom, chatMessages } from '../stores/chat';
   import { currentUser } from '../stores/auth';
@@ -8,6 +8,29 @@
   let messageInput = '';
   let searchQuery = '';
   let showEmojiPicker = false;
+  let showRoomsList = false; // Controls mobile sidebar visibility
+  let isMobile = false;
+  
+  // Check if device is mobile
+  onMount(() => {
+    const checkMobile = () => {
+      isMobile = window.innerWidth < 768;
+      // On desktop, always show rooms list
+      if (!isMobile) {
+        showRoomsList = true;
+      }
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    
+    // Select first room by default if none selected
+    if ($chatRooms.length > 0 && !$currentChatRoom) {
+      selectRoom($chatRooms[0]);
+    }
+    
+    return () => window.removeEventListener('resize', checkMobile);
+  });
   
   // Filter chat rooms based on search
   $: filteredRooms = $chatRooms.filter(room => 
@@ -23,6 +46,15 @@
     currentChatRoom.set(room);
     // Mark messages as read
     room.unreadCount = 0;
+    
+    // On mobile, hide rooms list when a room is selected
+    if (isMobile) {
+      showRoomsList = false;
+    }
+  }
+  
+  function toggleRoomsList() {
+    showRoomsList = !showRoomsList;
   }
   
   function sendMessage() {
@@ -78,22 +110,43 @@
     const previousDate = new Date(previousMessage.timestamp).toDateString();
     return currentDate !== previousDate;
   }
-  
-  onMount(() => {
-    // Select first room by default
-    if ($chatRooms.length > 0 && !$currentChatRoom) {
-      selectRoom($chatRooms[0]);
-    }
-  });
 </script>
 
 <Layout>
-  <div class="h-[calc(100vh-4rem)] flex">
+  <div class="h-[calc(100vh-4rem)] flex relative">
+    <!-- Mobile Overlay -->
+    {#if isMobile && showRoomsList}
+      <div 
+        class="fixed inset-0 bg-black bg-opacity-50 z-40 md:hidden"
+        on:click={() => showRoomsList = false}
+        role="button"
+        tabindex="0"
+        on:keydown={(e) => e.key === 'Enter' && (showRoomsList = false)}
+        aria-label="Close chat rooms"
+      ></div>
+    {/if}
+
     <!-- Chat Rooms Sidebar -->
-    <div class="w-80 bg-white border-r border-gray-200 flex flex-col">
+    <div class="
+      {isMobile ? 'fixed inset-y-0 left-0 z-50 transform transition-transform duration-300' : 'relative'}
+      {isMobile && !showRoomsList ? '-translate-x-full' : 'translate-x-0'}
+      w-80 bg-white border-r border-gray-200 flex flex-col
+      md:relative md:translate-x-0
+    ">
       <!-- Header -->
       <div class="p-4 border-b border-gray-200">
-        <h2 class="text-lg font-semibold text-gray-900 mb-3">Messages</h2>
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-lg font-semibold text-gray-900">Messages</h2>
+          {#if isMobile}
+            <button
+              class="p-2 rounded-lg hover:bg-gray-100 transition-colors duration-200 md:hidden"
+              on:click={() => showRoomsList = false}
+              aria-label="Close chat rooms"
+            >
+              <ArrowLeft class="w-5 h-5 text-gray-600" />
+            </button>
+          {/if}
+        </div>
         
         <!-- Search -->
         <div class="relative">
@@ -169,12 +222,23 @@
     </div>
 
     <!-- Chat Area -->
-    <div class="flex-1 flex flex-col">
+    <div class="flex-1 flex flex-col min-w-0">
       {#if $currentChatRoom}
         <!-- Chat Header -->
         <div class="p-4 border-b border-gray-200 bg-white">
           <div class="flex items-center justify-between">
             <div class="flex items-center space-x-3">
+              <!-- Mobile Menu Button -->
+              {#if isMobile}
+                <button
+                  class="p-2 rounded-lg hover:bg-gray-100 transition-colors duration-200 md:hidden"
+                  on:click={toggleRoomsList}
+                  aria-label="Open chat rooms"
+                >
+                  <Menu class="w-5 h-5 text-gray-600" />
+                </button>
+              {/if}
+              
               {#if $currentChatRoom.type === 'course'}
                 <div class="w-10 h-10 bg-primary-600 rounded-full flex items-center justify-center text-white font-bold">
                   {$currentChatRoom.name.charAt(0)}
@@ -187,8 +251,8 @@
                 />
               {/if}
               
-              <div>
-                <h3 class="font-semibold text-gray-900">{$currentChatRoom.name}</h3>
+              <div class="min-w-0 flex-1">
+                <h3 class="font-semibold text-gray-900 truncate">{$currentChatRoom.name}</h3>
                 <p class="text-sm text-gray-500">
                   {#if $currentChatRoom.type === 'course'}
                     {$currentChatRoom.participants.length} members
@@ -201,10 +265,10 @@
             
             <div class="flex items-center space-x-2">
               {#if $currentChatRoom.type === 'direct'}
-                <button class="p-2 rounded-lg hover:bg-gray-100 transition-colors duration-200">
+                <button class="p-2 rounded-lg hover:bg-gray-100 transition-colors duration-200 hidden sm:block">
                   <Phone class="w-5 h-5 text-gray-600" />
                 </button>
-                <button class="p-2 rounded-lg hover:bg-gray-100 transition-colors duration-200">
+                <button class="p-2 rounded-lg hover:bg-gray-100 transition-colors duration-200 hidden sm:block">
                   <Video class="w-5 h-5 text-gray-600" />
                 </button>
               {/if}
@@ -230,15 +294,15 @@
               <img 
                 src={message.senderAvatar} 
                 alt={message.senderName}
-                class="w-8 h-8 rounded-full object-cover"
+                class="w-8 h-8 rounded-full object-cover flex-shrink-0"
               />
               
-              <div class="flex flex-col {message.senderId === $currentUser?.id ? 'items-end' : 'items-start'} max-w-xs lg:max-w-md">
+              <div class="flex flex-col {message.senderId === $currentUser?.id ? 'items-end' : 'items-start'} max-w-xs sm:max-w-sm lg:max-w-md">
                 {#if $currentChatRoom.type === 'course' && message.senderId !== $currentUser?.id}
                   <span class="text-xs text-gray-500 mb-1">{message.senderName}</span>
                 {/if}
                 
-                <div class="px-4 py-2 rounded-lg {message.senderId === $currentUser?.id ? 'bg-primary-600 text-white' : 'bg-white text-gray-900'} shadow-sm">
+                <div class="px-4 py-2 rounded-lg {message.senderId === $currentUser?.id ? 'bg-primary-600 text-white' : 'bg-white text-gray-900'} shadow-sm break-words">
                   <p class="text-sm">{message.content}</p>
                 </div>
                 
@@ -253,7 +317,7 @@
         <!-- Message Input -->
         <div class="p-4 bg-white border-t border-gray-200">
           <div class="flex items-end space-x-3">
-            <button class="p-2 rounded-lg hover:bg-gray-100 transition-colors duration-200">
+            <button class="p-2 rounded-lg hover:bg-gray-100 transition-colors duration-200 flex-shrink-0">
               <Paperclip class="w-5 h-5 text-gray-600" />
             </button>
             
@@ -264,6 +328,7 @@
                 placeholder="Type a message..."
                 rows="1"
                 class="w-full px-4 py-2 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 resize-none"
+                style="min-height: 40px; max-height: 120px;"
               ></textarea>
               
               <button 
@@ -275,7 +340,7 @@
             </div>
             
             <button 
-              class="p-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors duration-200 disabled:opacity-50"
+              class="p-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors duration-200 disabled:opacity-50 flex-shrink-0"
               on:click={sendMessage}
               disabled={!messageInput.trim()}
             >
@@ -287,11 +352,21 @@
         <!-- No Chat Selected -->
         <div class="flex-1 flex items-center justify-center bg-gray-50">
           <div class="text-center">
-            <div class="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Send class="w-8 h-8 text-gray-400" />
-            </div>
-            <h3 class="text-lg font-medium text-gray-900 mb-2">Select a conversation</h3>
-            <p class="text-gray-500">Choose a chat room to start messaging</p>
+            {#if isMobile}
+              <button
+                class="mb-4 btn btn-primary"
+                on:click={toggleRoomsList}
+              >
+                <Menu class="w-4 h-4 mr-2" />
+                Select a conversation
+              </button>
+            {:else}
+              <div class="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Send class="w-8 h-8 text-gray-400" />
+              </div>
+              <h3 class="text-lg font-medium text-gray-900 mb-2">Select a conversation</h3>
+              <p class="text-gray-500">Choose a chat room to start messaging</p>
+            {/if}
           </div>
         </div>
       {/if}
